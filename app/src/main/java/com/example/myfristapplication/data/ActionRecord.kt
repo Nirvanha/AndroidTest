@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class ActionRecord(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val type: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val descripcion: String? = null // Nuevo campo para comida
 )

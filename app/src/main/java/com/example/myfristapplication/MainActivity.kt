@@ -34,8 +34,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyFristApplicationTheme {
                 MainApp(
-                    onRegisterAction = { actionType ->
-                        val record = ActionRecord(type = actionType, timestamp = System.currentTimeMillis())
+                    onRegisterAction = { actionType, descripcion ->
+                        val record = ActionRecord(type = actionType, timestamp = System.currentTimeMillis(), descripcion = descripcion)
                         lifecycleScope.launch {
                             database.actionRecordDao().insert(record)
                         }
@@ -54,13 +54,14 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainApp(
-    onRegisterAction: (String) -> Unit,
+    onRegisterAction: (String, String?) -> Unit,
     onRequestRecords: suspend () -> List<ActionRecord>,
     onDeleteAllRecords: suspend () -> Unit
 ) {
     var currentScreen by remember { mutableStateOf("home") }
     var message by remember { mutableStateOf("") }
     var records by remember { mutableStateOf<List<ActionRecord>>(emptyList()) }
+    var comidaDescripcion by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
 
     when (currentScreen) {
@@ -68,12 +69,15 @@ fun MainApp(
             onCigaretteClick = {
                 message = "You smoked a cigarette!"
                 currentScreen = "message"
-                onRegisterAction("cigarette")
+                onRegisterAction("cigarette", null)
             },
             onBeerClick = {
                 message = "You drank a beer!"
                 currentScreen = "message"
-                onRegisterAction("beer")
+                onRegisterAction("beer", null)
+            },
+            onComidaClick = {
+                currentScreen = "comida"
             },
             onViewRecordsClick = {
                 coroutineScope.launch {
@@ -86,6 +90,20 @@ fun MainApp(
                     onDeleteAllRecords()
                     records = emptyList()
                 }
+            }
+        )
+        "comida" -> ComidaScreen(
+            descripcion = comidaDescripcion,
+            onDescripcionChange = { comidaDescripcion = it },
+            onRegistrarClick = {
+                onRegisterAction("comida", comidaDescripcion)
+                message = "Has registrado comida!"
+                comidaDescripcion = ""
+                currentScreen = "message"
+            },
+            onBackClick = {
+                comidaDescripcion = ""
+                currentScreen = "home"
             }
         )
         "message" -> MessageScreen(
@@ -103,6 +121,7 @@ fun MainApp(
 fun HomeScreen(
     onCigaretteClick: () -> Unit,
     onBeerClick: () -> Unit,
+    onComidaClick: () -> Unit,
     onViewRecordsClick: () -> Unit,
     onDeleteAllClick: () -> Unit
 ) {
@@ -120,7 +139,7 @@ fun HomeScreen(
                 .padding(bottom = 16.dp)
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ic_cigarro),
+                painter = painterResource(id = R.drawable.ic_cigarette),
                 contentDescription = "Cigarette",
                 modifier = Modifier.size(32.dp)
             )
@@ -135,7 +154,7 @@ fun HomeScreen(
                 .padding(bottom = 16.dp)
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ic_cerveza),
+                painter = painterResource(id = R.drawable.ic_beer),
                 contentDescription = "Beer",
                 modifier = Modifier.size(32.dp)
             )
@@ -143,6 +162,20 @@ fun HomeScreen(
             Text("Beer")
         }
 
+        Button(
+            onClick = onComidaClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_food),
+                contentDescription = "Beer",
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Food")
+        }
         Button(
             onClick = onViewRecordsClick,
             modifier = Modifier.fillMaxWidth()
@@ -155,6 +188,39 @@ fun HomeScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Borrar registros")
+        }
+    }
+}
+
+@Composable
+fun ComidaScreen(
+    descripcion: String,
+    onDescripcionChange: (String) -> Unit,
+    onRegistrarClick: () -> Unit,
+    onBackClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "¿Qué has comido?", fontSize = 20.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = descripcion,
+            onValueChange = onDescripcionChange,
+            label = { Text("Descripción") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onRegistrarClick, modifier = Modifier.fillMaxWidth()) {
+            Text("Registrar comida")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onBackClick, modifier = Modifier.fillMaxWidth()) {
+            Text("Volver")
         }
     }
 }
@@ -194,7 +260,11 @@ fun RecordsScreen(records: List<ActionRecord>, onBackClick: () -> Unit) {
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(records) { record ->
                 val formattedDate = dateFormat.format(Date(record.timestamp))
-                Text("${record.type} - $formattedDate", fontSize = 16.sp)
+                if (record.type == "comida" && !record.descripcion.isNullOrBlank()) {
+                    Text("Comida - $formattedDate - ${record.descripcion}", fontSize = 16.sp)
+                } else {
+                    Text("${record.type} - $formattedDate", fontSize = 16.sp)
+                }
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
