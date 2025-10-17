@@ -18,6 +18,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.example.myfristapplication.data.ActionRecord
 import com.example.myfristapplication.data.AppDatabase
+import com.example.myfristapplication.data.ActionRecordRepository
+import com.example.myfristapplication.data.DailyExpense
+import com.example.myfristapplication.data.DailyExpenseRepository
 import kotlinx.coroutines.launch
 import com.example.myfristapplication.ui.theme.MyFristApplicationTheme
 import java.text.SimpleDateFormat
@@ -26,25 +29,44 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private lateinit var database: AppDatabase
-
+    private lateinit var actionRecordRepository: ActionRecordRepository
+    private lateinit var dailyExpenseRepository: DailyExpenseRepository
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         database = AppDatabase.getDatabase(this)
+        actionRecordRepository = ActionRecordRepository(database.actionRecordDao())
+        dailyExpenseRepository = DailyExpenseRepository(database.dailyExpenseDao())
         enableEdgeToEdge()
         setContent {
             MyFristApplicationTheme {
                 MainApp(
                     onRegisterAction = { actionType, descripcion ->
-                        val record = ActionRecord(type = actionType, timestamp = System.currentTimeMillis(), descripcion = descripcion)
+                        val record = ActionRecord(
+                            type = actionType,
+                            timestamp = System.currentTimeMillis(),
+                            description = descripcion
+                        )
                         lifecycleScope.launch {
-                            database.actionRecordDao().insert(record)
+                            actionRecordRepository.insert(record)
                         }
                     },
                     onRequestRecords = {
-                        database.actionRecordDao().getAll()
+                        actionRecordRepository.getAll()
                     },
                     onDeleteAllRecords = {
-                        database.actionRecordDao().deleteAll()
+                        actionRecordRepository.deleteAll()
+                    },
+                    onRegisterExpense = { amount, category, date, note, origin ->
+                        val expense = DailyExpense(
+                            amount = amount,
+                            category = category,
+                            date = date,
+                            note = note,
+                            origin = origin
+                        )
+                        lifecycleScope.launch {
+                            dailyExpenseRepository.insert(expense)
+                        }
                     }
                 )
             }
@@ -56,13 +78,19 @@ class MainActivity : ComponentActivity() {
 fun MainApp(
     onRegisterAction: (String, String?) -> Unit,
     onRequestRecords: suspend () -> List<ActionRecord>,
-    onDeleteAllRecords: suspend () -> Unit
+    onDeleteAllRecords: suspend () -> Unit,
+    onRegisterExpense: (Double, String, Long, String?, String?) -> Unit
 ) {
     var currentScreen by remember { mutableStateOf("home") }
     var message by remember { mutableStateOf("") }
     var records by remember { mutableStateOf<List<ActionRecord>>(emptyList()) }
-    var comidaDescripcion by remember { mutableStateOf("") }
+    var foodDescription by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
+    var dailyExpenseAmountText by remember { mutableStateOf("") }
+    var dailyExpenseCategory by remember { mutableStateOf("") }
+    var dailyExpenseOrigin by remember { mutableStateOf("") }
+    var isAmountValid by remember { mutableStateOf(true) }
+    var showExpenseError by remember { mutableStateOf(false) }
 
     when (currentScreen) {
         "home" -> HomeScreen(
@@ -76,8 +104,8 @@ fun MainApp(
                 currentScreen = "message"
                 onRegisterAction("beer", null)
             },
-            onComidaClick = {
-                currentScreen = "comida"
+            onFoodClick = {
+                currentScreen = "food"
             },
             onViewRecordsClick = {
                 coroutineScope.launch {
@@ -90,26 +118,80 @@ fun MainApp(
                     onDeleteAllRecords()
                     records = emptyList()
                 }
+            },
+            onMoneyClick = {
+                currentScreen = "dailyExpense"
             }
         )
-        "comida" -> ComidaScreen(
-            descripcion = comidaDescripcion,
-            onDescripcionChange = { comidaDescripcion = it },
+
+        "food" -> FoodScreen(
+            description = foodDescription,
+            onDescriptionChange = { foodDescription = it },
             onRegistrarClick = {
-                onRegisterAction("comida", comidaDescripcion)
-                message = "Has registrado comida!"
-                comidaDescripcion = ""
+                onRegisterAction("food", foodDescription)
+                message = "You register food!"
+                foodDescription = ""
                 currentScreen = "message"
             },
             onBackClick = {
-                comidaDescripcion = ""
+                foodDescription = ""
                 currentScreen = "home"
             }
         )
+
+        "dailyExpense" -> DailyExpenseScreen(
+            amountText = dailyExpenseAmountText,
+            category = dailyExpenseCategory,
+            origin = dailyExpenseOrigin,
+            isAmountValid = isAmountValid,
+            showExpenseError = showExpenseError,
+            onAmountTextChange = {
+                dailyExpenseAmountText = it
+                isAmountValid = it.toDoubleOrNull() != null && it.toDoubleOrNull()!! > 0.0
+                showExpenseError = false
+            },
+            onCategoryChange = {
+                dailyExpenseCategory = it
+                showExpenseError = false
+            },
+            onOriginChange = {
+                dailyExpenseOrigin = it
+                showExpenseError = false
+            },
+            onRegisterExpenseClick = {
+                val amount = dailyExpenseAmountText.toDoubleOrNull() ?: 0.0
+                if (isAmountValid && dailyExpenseCategory.isNotBlank() && dailyExpenseOrigin.isNotBlank()) {
+                    onRegisterExpense(
+                        amount,
+                        dailyExpenseCategory,
+                        System.currentTimeMillis(),
+                        null,
+                        dailyExpenseOrigin
+                    )
+                    message = "Gasto diario registrado!"
+                    dailyExpenseAmountText = ""
+                    dailyExpenseCategory = ""
+                    dailyExpenseOrigin = ""
+                    showExpenseError = false
+                    currentScreen = "message"
+                } else {
+                    showExpenseError = true
+                }
+            },
+            onBackClick = {
+                dailyExpenseAmountText = ""
+                dailyExpenseCategory = ""
+                dailyExpenseOrigin = ""
+                showExpenseError = false
+                currentScreen = "home"
+            }
+        )
+
         "message" -> MessageScreen(
             message = message,
             onBackClick = { currentScreen = "home" }
         )
+
         "records" -> RecordsScreen(
             records = records,
             onBackClick = { currentScreen = "home" }
@@ -121,9 +203,10 @@ fun MainApp(
 fun HomeScreen(
     onCigaretteClick: () -> Unit,
     onBeerClick: () -> Unit,
-    onComidaClick: () -> Unit,
+    onFoodClick: () -> Unit,
     onViewRecordsClick: () -> Unit,
-    onDeleteAllClick: () -> Unit
+    onDeleteAllClick: () -> Unit,
+    onMoneyClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -163,7 +246,7 @@ fun HomeScreen(
         }
 
         Button(
-            onClick = onComidaClick,
+            onClick = onFoodClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
@@ -175,6 +258,20 @@ fun HomeScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("Food")
+        }
+        Button(
+            onClick = onMoneyClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_money),
+                contentDescription = "Money",
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Money")
         }
         Button(
             onClick = onViewRecordsClick,
@@ -193,9 +290,9 @@ fun HomeScreen(
 }
 
 @Composable
-fun ComidaScreen(
-    descripcion: String,
-    onDescripcionChange: (String) -> Unit,
+fun FoodScreen(
+    description: String,
+    onDescriptionChange: (String) -> Unit,
     onRegistrarClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
@@ -209,8 +306,8 @@ fun ComidaScreen(
         Text(text = "¿Qué has comido?", fontSize = 20.sp)
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
-            value = descripcion,
-            onValueChange = onDescripcionChange,
+            value = description,
+            onValueChange = onDescriptionChange,
             label = { Text("Descripción") },
             modifier = Modifier.fillMaxWidth()
         )
@@ -260,8 +357,8 @@ fun RecordsScreen(records: List<ActionRecord>, onBackClick: () -> Unit) {
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(records) { record ->
                 val formattedDate = dateFormat.format(Date(record.timestamp))
-                if (record.type == "comida" && !record.descripcion.isNullOrBlank()) {
-                    Text("Comida - $formattedDate - ${record.descripcion}", fontSize = 16.sp)
+                if (record.type == "comida" && !record.description.isNullOrBlank()) {
+                    Text("Comida - $formattedDate - ${record.description}", fontSize = 16.sp)
                 } else {
                     Text("${record.type} - $formattedDate", fontSize = 16.sp)
                 }
@@ -270,6 +367,82 @@ fun RecordsScreen(records: List<ActionRecord>, onBackClick: () -> Unit) {
         }
         Button(onClick = onBackClick) {
             Text("Back")
+        }
+    }
+}
+
+
+@Composable
+fun DailyExpenseScreen(
+    amountText: String,
+    category: String,
+    origin: String,
+    isAmountValid: Boolean,
+    showExpenseError: Boolean,
+    onAmountTextChange: (String) -> Unit,
+    onCategoryChange: (String) -> Unit,
+    onOriginChange: (String) -> Unit,
+    onRegisterExpenseClick: () -> Unit,
+    onBackClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "Registrar gasto diario", fontSize = 20.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = amountText,
+            onValueChange = onAmountTextChange,
+            label = { Text("Cantidad") },
+            isError = !isAmountValid,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        if (!isAmountValid) {
+            Text(
+                text = "Introduce una cantidad válida mayor que 0",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = category,
+            onValueChange = onCategoryChange,
+            label = { Text("Categoría") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = origin,
+            onValueChange = onOriginChange,
+            label = { Text("Origen") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onRegisterExpenseClick,
+            enabled = isAmountValid && category.isNotBlank() && origin.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()) {
+            Text("Registrar gasto")
+        }
+        if (showExpenseError) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Por favor, completa todos los campos.",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 14.sp,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onBackClick, modifier = Modifier.fillMaxWidth()) {
+            Text("Volver")
         }
     }
 }
