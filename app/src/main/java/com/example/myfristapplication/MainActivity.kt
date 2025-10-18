@@ -4,138 +4,108 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
+import androidx.activity.viewModels
+import androidx.lifecycle.ViewModelProvider
 import com.example.myfristapplication.data.ActionRecord
 import com.example.myfristapplication.data.AppDatabase
 import com.example.myfristapplication.data.ActionRecordRepository
-import com.example.myfristapplication.data.DailyExpense
 import com.example.myfristapplication.data.DailyExpenseRepository
-import kotlinx.coroutines.launch
 import com.example.myfristapplication.ui.theme.MyFristApplicationTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.remember
 
 class MainActivity : ComponentActivity() {
     private lateinit var database: AppDatabase
     private lateinit var actionRecordRepository: ActionRecordRepository
     private lateinit var dailyExpenseRepository: DailyExpenseRepository
+    private lateinit var viewModelFactory: ViewModelProvider.Factory
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         database = AppDatabase.getDatabase(this)
         actionRecordRepository = ActionRecordRepository(database.actionRecordDao())
         dailyExpenseRepository = DailyExpenseRepository(database.dailyExpenseDao())
+        viewModelFactory = object : ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return MainViewModel(actionRecordRepository, dailyExpenseRepository) as T
+            }
+        }
+        val viewModel: MainViewModel by viewModels { viewModelFactory }
         enableEdgeToEdge()
         setContent {
             MyFristApplicationTheme {
-                MainApp(
-                    onRegisterAction = { actionType, descripcion ->
-                        val record = ActionRecord(
-                            type = actionType,
-                            timestamp = System.currentTimeMillis(),
-                            description = descripcion
-                        )
-                        lifecycleScope.launch {
-                            actionRecordRepository.insert(record)
-                        }
-                    },
-                    onRequestRecords = {
-                        actionRecordRepository.getAll()
-                    },
-                    onDeleteAllRecords = {
-                        actionRecordRepository.deleteAll()
-                    },
-                    onRegisterExpense = { amount, category, date, note, origin ->
-                        val expense = DailyExpense(
-                            amount = amount,
-                            category = category,
-                            date = date,
-                            note = note,
-                            origin = origin
-                        )
-                        lifecycleScope.launch {
-                            dailyExpenseRepository.insert(expense)
-                        }
-                    }
-                )
+                MainApp(viewModel)
             }
         }
     }
 }
 
 @Composable
-fun MainApp(
-    onRegisterAction: (String, String?) -> Unit,
-    onRequestRecords: suspend () -> List<ActionRecord>,
-    onDeleteAllRecords: suspend () -> Unit,
-    onRegisterExpense: (Double, String, Long, String?, String?) -> Unit
-) {
-    var currentScreen by remember { mutableStateOf("home") }
-    var message by remember { mutableStateOf("") }
-    var records by remember { mutableStateOf<List<ActionRecord>>(emptyList()) }
-    var foodDescription by remember { mutableStateOf("") }
-    val coroutineScope = rememberCoroutineScope()
-    var dailyExpenseAmountText by remember { mutableStateOf("") }
-    var dailyExpenseCategory by remember { mutableStateOf("") }
-    var dailyExpenseOrigin by remember { mutableStateOf("") }
-    var isAmountValid by remember { mutableStateOf(true) }
-    var showExpenseError by remember { mutableStateOf(false) }
+fun MainApp(viewModel: MainViewModel) {
+    val currentScreen by viewModel.currentScreen.collectAsState()
+    val message by viewModel.message.collectAsState()
+    val records by viewModel.records.collectAsState()
+    val foodDescription by viewModel.foodDescription.collectAsState()
+    val dailyExpenseAmountText by viewModel.dailyExpenseAmountText.collectAsState()
+    val dailyExpenseCategory by viewModel.dailyExpenseCategory.collectAsState()
+    val dailyExpenseOrigin by viewModel.dailyExpenseOrigin.collectAsState()
+    val isAmountValid by viewModel.isAmountValid.collectAsState()
+    val showExpenseError by viewModel.showExpenseError.collectAsState()
 
     when (currentScreen) {
         "home" -> HomeScreen(
             onCigaretteClick = {
-                message = "You smoked a cigarette!"
-                currentScreen = "message"
-                onRegisterAction("cigarette", null)
+                viewModel.setMessage("You smoked a cigarette!")
+                viewModel.navigateTo("message")
+                viewModel.registerAction("cigarette", null)
             },
             onBeerClick = {
-                message = "You drank a beer!"
-                currentScreen = "message"
-                onRegisterAction("beer", null)
+                viewModel.setMessage("You drank a beer!")
+                viewModel.navigateTo("message")
+                viewModel.registerAction("beer", null)
             },
             onFoodClick = {
-                currentScreen = "food"
+                viewModel.navigateTo("food")
             },
             onViewRecordsClick = {
-                coroutineScope.launch {
-                    records = onRequestRecords()
-                    currentScreen = "records"
-                }
+                viewModel.requestRecords()
+                viewModel.navigateTo("records")
             },
             onDeleteAllClick = {
-                coroutineScope.launch {
-                    onDeleteAllRecords()
-                    records = emptyList()
-                }
+                viewModel.deleteAllRecords()
             },
             onMoneyClick = {
-                currentScreen = "dailyExpense"
+                viewModel.navigateTo("dailyExpense")
             }
         )
 
         "food" -> FoodScreen(
             description = foodDescription,
-            onDescriptionChange = { foodDescription = it },
+            onDescriptionChange = { viewModel.setFoodDescription(it) },
             onRegistrarClick = {
-                onRegisterAction("food", foodDescription)
-                message = "You register food!"
-                foodDescription = ""
-                currentScreen = "message"
+                viewModel.registerAction("food", foodDescription)
+                viewModel.setMessage("You register food!")
+                viewModel.resetFoodFields()
+                viewModel.navigateTo("message")
             },
             onBackClick = {
-                foodDescription = ""
-                currentScreen = "home"
+                viewModel.resetFoodFields()
+                viewModel.navigateTo("home")
             }
         )
 
@@ -145,56 +115,26 @@ fun MainApp(
             origin = dailyExpenseOrigin,
             isAmountValid = isAmountValid,
             showExpenseError = showExpenseError,
-            onAmountTextChange = {
-                dailyExpenseAmountText = it
-                isAmountValid = it.toDoubleOrNull() != null && it.toDoubleOrNull()!! > 0.0
-                showExpenseError = false
-            },
-            onCategoryChange = {
-                dailyExpenseCategory = it
-                showExpenseError = false
-            },
-            onOriginChange = {
-                dailyExpenseOrigin = it
-                showExpenseError = false
-            },
+            onAmountTextChange = { viewModel.setDailyExpenseAmountText(it) },
+            onCategoryChange = { viewModel.setDailyExpenseCategory(it) },
+            onOriginChange = { viewModel.setDailyExpenseOrigin(it) },
             onRegisterExpenseClick = {
-                val amount = dailyExpenseAmountText.toDoubleOrNull() ?: 0.0
-                if (isAmountValid && dailyExpenseCategory.isNotBlank() && dailyExpenseOrigin.isNotBlank()) {
-                    onRegisterExpense(
-                        amount,
-                        dailyExpenseCategory,
-                        System.currentTimeMillis(),
-                        null,
-                        dailyExpenseOrigin
-                    )
-                    message = "Gasto diario registrado!"
-                    dailyExpenseAmountText = ""
-                    dailyExpenseCategory = ""
-                    dailyExpenseOrigin = ""
-                    showExpenseError = false
-                    currentScreen = "message"
-                } else {
-                    showExpenseError = true
-                }
+                viewModel.registerExpense()
             },
             onBackClick = {
-                dailyExpenseAmountText = ""
-                dailyExpenseCategory = ""
-                dailyExpenseOrigin = ""
-                showExpenseError = false
-                currentScreen = "home"
+                viewModel.resetDailyExpenseFields()
+                viewModel.navigateTo("home")
             }
         )
 
         "message" -> MessageScreen(
             message = message,
-            onBackClick = { currentScreen = "home" }
+            onBackClick = { viewModel.navigateTo("home") }
         )
 
         "records" -> RecordsScreen(
             records = records,
-            onBackClick = { currentScreen = "home" }
+            onBackClick = { viewModel.navigateTo("home") }
         )
     }
 }
