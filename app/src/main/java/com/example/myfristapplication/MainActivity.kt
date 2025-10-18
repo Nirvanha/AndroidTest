@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.lifecycle.ViewModelProvider
 import com.example.myfristapplication.data.ActionRecord
+import com.example.myfristapplication.data.DailyExpense
 import com.example.myfristapplication.data.AppDatabase
 import com.example.myfristapplication.data.ActionRecordRepository
 import com.example.myfristapplication.data.DailyExpenseRepository
@@ -60,6 +61,7 @@ fun MainApp(viewModel: MainViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsState()
     val message by viewModel.message.collectAsState()
     val records by viewModel.records.collectAsState()
+    val expenseRecords by viewModel.expenseRecords.collectAsState()
     val foodDescription by viewModel.foodDescription.collectAsState()
     val dailyExpenseAmountText by viewModel.dailyExpenseAmountText.collectAsState()
     val dailyExpenseCategory by viewModel.dailyExpenseCategory.collectAsState()
@@ -91,6 +93,10 @@ fun MainApp(viewModel: MainViewModel) {
             },
             onMoneyClick = {
                 viewModel.navigateTo("dailyExpense")
+            },
+            onViewExpensesClick = {
+                viewModel.requestExpenseRecords()
+                viewModel.navigateTo("expenseRecords")
             }
         )
 
@@ -136,6 +142,11 @@ fun MainApp(viewModel: MainViewModel) {
             records = records,
             onBackClick = { viewModel.navigateTo("home") }
         )
+
+        "expenseRecords" -> ExpenseRecordsScreen(
+            expenseRecords = expenseRecords,
+            onBackClick = { viewModel.navigateTo("home") }
+        )
     }
 }
 
@@ -146,7 +157,8 @@ fun HomeScreen(
     onFoodClick: () -> Unit,
     onViewRecordsClick: () -> Unit,
     onDeleteAllClick: () -> Unit,
-    onMoneyClick: () -> Unit
+    onMoneyClick: () -> Unit,
+    onViewExpensesClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -212,6 +224,14 @@ fun HomeScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("Money")
+        }
+        Button(
+            onClick = onViewExpensesClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+        ) {
+            Text("Ver gastos")
         }
         Button(
             onClick = onViewRecordsClick,
@@ -307,6 +327,32 @@ fun RecordsScreen(records: List<ActionRecord>, onBackClick: () -> Unit) {
         }
         Button(onClick = onBackClick) {
             Text("Back")
+        }
+    }
+}
+
+@Composable
+fun ExpenseRecordsScreen(expenseRecords: List<DailyExpense>, onBackClick: () -> Unit) {
+    val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Top
+    ) {
+        Text(text = "Gastos", fontSize = 24.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(expenseRecords) { expense ->
+                val formattedDate = dateFormat.format(Date(expense.date))
+                val noteText = expense.note?.let { " - $it" } ?: ""
+                Text("${expense.amount} € - ${expense.category} - $formattedDate - ${expense.origin}$noteText", fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+        Button(onClick = onBackClick) {
+            Text("Volver")
         }
     }
 }

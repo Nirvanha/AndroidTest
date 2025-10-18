@@ -41,6 +41,17 @@ class MainViewModel(
     private val _showExpenseError = MutableStateFlow(false)
     val showExpenseError: StateFlow<Boolean> = _showExpenseError
 
+    // Añadimos el StateFlow para los registros de gastos diarios
+    private val _expenseRecords = MutableStateFlow<List<DailyExpense>>(emptyList())
+    val expenseRecords: StateFlow<List<DailyExpense>> = _expenseRecords
+
+    // Función para solicitar los gastos desde el repositorio
+    fun requestExpenseRecords() {
+        viewModelScope.launch {
+            _expenseRecords.value = dailyExpenseRepository.getAll()
+        }
+    }
+
     fun navigateTo(screen: String) {
         _currentScreen.value = screen
     }
@@ -128,4 +139,3 @@ class MainViewModel(
         _foodDescription.value = ""
     }
 }
-
