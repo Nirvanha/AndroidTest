@@ -8,5 +8,5 @@ data class ActionRecord(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val type: String,
     val timestamp: Long,
-    val descripcion: String? = null // Nuevo campo para comida
+    val description: String? = null // Nuevo campo para comida
 )

@@ -4,115 +4,137 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
+import androidx.activity.viewModels
+import androidx.lifecycle.ViewModelProvider
 import com.example.myfristapplication.data.ActionRecord
 import com.example.myfristapplication.data.AppDatabase
-import kotlinx.coroutines.launch
+import com.example.myfristapplication.data.ActionRecordRepository
+import com.example.myfristapplication.data.DailyExpenseRepository
 import com.example.myfristapplication.ui.theme.MyFristApplicationTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.remember
 
 class MainActivity : ComponentActivity() {
     private lateinit var database: AppDatabase
-
+    private lateinit var actionRecordRepository: ActionRecordRepository
+    private lateinit var dailyExpenseRepository: DailyExpenseRepository
+    private lateinit var viewModelFactory: ViewModelProvider.Factory
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         database = AppDatabase.getDatabase(this)
+        actionRecordRepository = ActionRecordRepository(database.actionRecordDao())
+        dailyExpenseRepository = DailyExpenseRepository(database.dailyExpenseDao())
+        viewModelFactory = object : ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return MainViewModel(actionRecordRepository, dailyExpenseRepository) as T
+            }
+        }
+        val viewModel: MainViewModel by viewModels { viewModelFactory }
         enableEdgeToEdge()
         setContent {
             MyFristApplicationTheme {
-                MainApp(
-                    onRegisterAction = { actionType, descripcion ->
-                        val record = ActionRecord(type = actionType, timestamp = System.currentTimeMillis(), descripcion = descripcion)
-                        lifecycleScope.launch {
-                            database.actionRecordDao().insert(record)
-                        }
-                    },
-                    onRequestRecords = {
-                        database.actionRecordDao().getAll()
-                    },
-                    onDeleteAllRecords = {
-                        database.actionRecordDao().deleteAll()
-                    }
-                )
+                MainApp(viewModel)
             }
         }
     }
 }
 
 @Composable
-fun MainApp(
-    onRegisterAction: (String, String?) -> Unit,
-    onRequestRecords: suspend () -> List<ActionRecord>,
-    onDeleteAllRecords: suspend () -> Unit
-) {
-    var currentScreen by remember { mutableStateOf("home") }
-    var message by remember { mutableStateOf("") }
-    var records by remember { mutableStateOf<List<ActionRecord>>(emptyList()) }
-    var comidaDescripcion by remember { mutableStateOf("") }
-    val coroutineScope = rememberCoroutineScope()
+fun MainApp(viewModel: MainViewModel) {
+    val currentScreen by viewModel.currentScreen.collectAsState()
+    val message by viewModel.message.collectAsState()
+    val records by viewModel.records.collectAsState()
+    val foodDescription by viewModel.foodDescription.collectAsState()
+    val dailyExpenseAmountText by viewModel.dailyExpenseAmountText.collectAsState()
+    val dailyExpenseCategory by viewModel.dailyExpenseCategory.collectAsState()
+    val dailyExpenseOrigin by viewModel.dailyExpenseOrigin.collectAsState()
+    val isAmountValid by viewModel.isAmountValid.collectAsState()
+    val showExpenseError by viewModel.showExpenseError.collectAsState()
 
     when (currentScreen) {
         "home" -> HomeScreen(
             onCigaretteClick = {
-                message = "You smoked a cigarette!"
-                currentScreen = "message"
-                onRegisterAction("cigarette", null)
+                viewModel.setMessage("You smoked a cigarette!")
+                viewModel.navigateTo("message")
+                viewModel.registerAction("cigarette", null)
             },
             onBeerClick = {
-                message = "You drank a beer!"
-                currentScreen = "message"
-                onRegisterAction("beer", null)
+                viewModel.setMessage("You drank a beer!")
+                viewModel.navigateTo("message")
+                viewModel.registerAction("beer", null)
             },
-            onComidaClick = {
-                currentScreen = "comida"
+            onFoodClick = {
+                viewModel.navigateTo("food")
             },
             onViewRecordsClick = {
-                coroutineScope.launch {
-                    records = onRequestRecords()
-                    currentScreen = "records"
-                }
+                viewModel.requestRecords()
+                viewModel.navigateTo("records")
             },
             onDeleteAllClick = {
-                coroutineScope.launch {
-                    onDeleteAllRecords()
-                    records = emptyList()
-                }
+                viewModel.deleteAllRecords()
+            },
+            onMoneyClick = {
+                viewModel.navigateTo("dailyExpense")
             }
         )
-        "comida" -> ComidaScreen(
-            descripcion = comidaDescripcion,
-            onDescripcionChange = { comidaDescripcion = it },
+
+        "food" -> FoodScreen(
+            description = foodDescription,
+            onDescriptionChange = { viewModel.setFoodDescription(it) },
             onRegistrarClick = {
-                onRegisterAction("comida", comidaDescripcion)
-                message = "Has registrado comida!"
-                comidaDescripcion = ""
-                currentScreen = "message"
+                viewModel.registerAction("food", foodDescription)
+                viewModel.setMessage("You register food!")
+                viewModel.resetFoodFields()
+                viewModel.navigateTo("message")
             },
             onBackClick = {
-                comidaDescripcion = ""
-                currentScreen = "home"
+                viewModel.resetFoodFields()
+                viewModel.navigateTo("home")
             }
         )
+
+        "dailyExpense" -> DailyExpenseScreen(
+            amountText = dailyExpenseAmountText,
+            category = dailyExpenseCategory,
+            origin = dailyExpenseOrigin,
+            isAmountValid = isAmountValid,
+            showExpenseError = showExpenseError,
+            onAmountTextChange = { viewModel.setDailyExpenseAmountText(it) },
+            onCategoryChange = { viewModel.setDailyExpenseCategory(it) },
+            onOriginChange = { viewModel.setDailyExpenseOrigin(it) },
+            onRegisterExpenseClick = {
+                viewModel.registerExpense()
+            },
+            onBackClick = {
+                viewModel.resetDailyExpenseFields()
+                viewModel.navigateTo("home")
+            }
+        )
+
         "message" -> MessageScreen(
             message = message,
-            onBackClick = { currentScreen = "home" }
+            onBackClick = { viewModel.navigateTo("home") }
         )
+
         "records" -> RecordsScreen(
             records = records,
-            onBackClick = { currentScreen = "home" }
+            onBackClick = { viewModel.navigateTo("home") }
         )
     }
 }
@@ -121,9 +143,10 @@ fun MainApp(
 fun HomeScreen(
     onCigaretteClick: () -> Unit,
     onBeerClick: () -> Unit,
-    onComidaClick: () -> Unit,
+    onFoodClick: () -> Unit,
     onViewRecordsClick: () -> Unit,
-    onDeleteAllClick: () -> Unit
+    onDeleteAllClick: () -> Unit,
+    onMoneyClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -163,7 +186,7 @@ fun HomeScreen(
         }
 
         Button(
-            onClick = onComidaClick,
+            onClick = onFoodClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
@@ -175,6 +198,20 @@ fun HomeScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("Food")
+        }
+        Button(
+            onClick = onMoneyClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_money),
+                contentDescription = "Money",
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Money")
         }
         Button(
             onClick = onViewRecordsClick,
@@ -193,9 +230,9 @@ fun HomeScreen(
 }
 
 @Composable
-fun ComidaScreen(
-    descripcion: String,
-    onDescripcionChange: (String) -> Unit,
+fun FoodScreen(
+    description: String,
+    onDescriptionChange: (String) -> Unit,
     onRegistrarClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
@@ -209,8 +246,8 @@ fun ComidaScreen(
         Text(text = "¿Qué has comido?", fontSize = 20.sp)
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
-            value = descripcion,
-            onValueChange = onDescripcionChange,
+            value = description,
+            onValueChange = onDescriptionChange,
             label = { Text("Descripción") },
             modifier = Modifier.fillMaxWidth()
         )
@@ -260,8 +297,8 @@ fun RecordsScreen(records: List<ActionRecord>, onBackClick: () -> Unit) {
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(records) { record ->
                 val formattedDate = dateFormat.format(Date(record.timestamp))
-                if (record.type == "comida" && !record.descripcion.isNullOrBlank()) {
-                    Text("Comida - $formattedDate - ${record.descripcion}", fontSize = 16.sp)
+                if (record.type == "comida" && !record.description.isNullOrBlank()) {
+                    Text("Comida - $formattedDate - ${record.description}", fontSize = 16.sp)
                 } else {
                     Text("${record.type} - $formattedDate", fontSize = 16.sp)
                 }
@@ -270,6 +307,82 @@ fun RecordsScreen(records: List<ActionRecord>, onBackClick: () -> Unit) {
         }
         Button(onClick = onBackClick) {
             Text("Back")
+        }
+    }
+}
+
+
+@Composable
+fun DailyExpenseScreen(
+    amountText: String,
+    category: String,
+    origin: String,
+    isAmountValid: Boolean,
+    showExpenseError: Boolean,
+    onAmountTextChange: (String) -> Unit,
+    onCategoryChange: (String) -> Unit,
+    onOriginChange: (String) -> Unit,
+    onRegisterExpenseClick: () -> Unit,
+    onBackClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "Registrar gasto diario", fontSize = 20.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = amountText,
+            onValueChange = onAmountTextChange,
+            label = { Text("Cantidad") },
+            isError = !isAmountValid,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        if (!isAmountValid) {
+            Text(
+                text = "Introduce una cantidad válida mayor que 0",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = category,
+            onValueChange = onCategoryChange,
+            label = { Text("Categoría") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = origin,
+            onValueChange = onOriginChange,
+            label = { Text("Origen") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onRegisterExpenseClick,
+            enabled = isAmountValid && category.isNotBlank() && origin.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()) {
+            Text("Registrar gasto")
+        }
+        if (showExpenseError) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Por favor, completa todos los campos.",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 14.sp,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onBackClick, modifier = Modifier.fillMaxWidth()) {
+            Text("Volver")
         }
     }
 }
