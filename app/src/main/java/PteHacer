@@ -1,0 +1,94 @@
+Voy a terminar lo que falta manualmente porque al intentar aplicar los cambios automáticamente el editor no pudo mapear los archivos (herramienta de edición falló). Te doy los cambios exactos que necesitas aplicar — puedes copiarlos y pegarlos en los ficheros indicados — y te indico los comandos para validar y compilar.
+Resumen corto (qué hay que hacer)
+Añadir la dependencia de DataStore Preferences en app/build.gradle.kts.
+Actualizar la llamada a HomeScreen en el preview app/src/main/java/com/example/myfristapplication/ui/previews/MainActivityPreview.kt para pasar isDarkMode y onToggleDarkMode (no-op).
+También asegurarte de que HomeScreen acepte esos parámetros (si aún no está hecho). En tu repo MainActivity ya llama a HomeScreen con isDarkMode y onToggleDarkMode, así que hay que que ajustar HomeScreen si no lo hiciste.
+Cambios exactos a aplicar (copiar/pegar)
+Añadir DataStore a app/build.gradle.kts
+Localiza el bloque dependencies { ... } y añade esta línea dentro del bloque (por ejemplo debajo de la sección Hilt):
+implementation("androidx.datastore:datastore-preferences:1.0.0")
+Ejemplo mínimo (te muestro únicamente la parte que hay que añadir para no reescribir todo el archivo):
+// dentro de dependencies { ... }
+    // DataStore Preferences for storing theme choice
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+Actualizar el preview para pasar los parámetros nuevos a HomeScreen
+Archivo: app/src/main/java/com/example/myfristapplication/ui/previews/MainActivityPreview.kt
+Localiza la llamada a HomeScreen(...) dentro del when (currentScreen) { "home" -> ... } y reemplázala o añádele las dos propiedades finales:
+isDarkMode = false, onToggleDarkMode = { /* no-op for preview */ }
+Ejemplo (fragmento actualizado):
+"home" -> HomeScreen(
+    onCigaretteClick = {
+        message = "You smoked a cigarette!"
+        currentScreen = "message"
+    },
+    onBeerClick = {
+        message = "You drank a beer!"
+        currentScreen = "message"
+    },
+    onFoodClick = { currentScreen = "food" },
+    onViewRecordsClick = { currentScreen = "records" },
+    onDeleteAllClick = { /* noop for preview */ },
+    onMoneyClick = { currentScreen = "dailyExpense" },
+    onViewExpensesClick = { currentScreen = "expenseRecords" },
+    isDarkMode = false,
+    onToggleDarkMode = { /* no-op for preview */ }
+)
+Asegúrate de que HomeScreen acepta los nuevos parámetros
+Archivo: app/src/main/java/com/example/myfristapplication/ui/home/HomeScreen.kt
+Si aún no has actualizado esta función, reemplaza la firma y añade el Switch en la UI como en este ejemplo (sólo la cabecera y ejemplo del switch y parámetros; el resto de botones queda igual):
+Firma y el bloque superior (ejemplo):
+@Composable
+fun HomeScreen(
+    onCigaretteClick: () -> Unit,
+    onBeerClick: () -> Unit,
+    onFoodClick: () -> Unit,
+    onViewRecordsClick: () -> Unit,
+    onDeleteAllClick: () -> Unit,
+    onMoneyClick: () -> Unit,
+    onViewExpensesClick: () -> Unit,
+    isDarkMode: Boolean,
+    onToggleDarkMode: (Boolean) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Theme toggle placed at the top
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Tema oscuro")
+            Spacer(modifier = Modifier.weight(1f))
+            Switch(checked = isDarkMode, onCheckedChange = onToggleDarkMode)
+        }
+
+        // ... resto de botones/ UI existente ...
+    }
+}
+Por qué estos cambios
+ThemePreferences.kt (DataStore) necesita la dependencia androidx.datastore:datastore-preferences. Sin ella las importaciones como preferencesDataStore, booleanPreferencesKey, edit no resuelven y generarán errores de compilación.
+MainActivity ya está llamando a HomeScreen(..., isDarkMode = ..., onToggleDarkMode = ...). Si no actualizas la preview y HomeScreen a la nueva firma tendrás errores de compilación y la preview fallará.
+La preview necesita pasar parámetros de ejemplo; el handler puede ser no-op para que la preview compile.
+Comandos para validar / compilar localmente
+Haz sync en Android Studio (o desde terminal):
+./gradlew --refresh-dependencies
+Compilar el módulo app:
+./gradlew :app:assembleDebug
+Para comprobar errores/fallos rápidos en Kotlin en el entorno actual (si quieres usar la verificación que usamos aquí), en Android Studio sincroniza el proyecto y revisa la pestaña “Problems” / “Build”.
+Cómo verificar la Preview en Android Studio
+Abre app/src/main/java/com/example/myfristapplication/ui/previews/MainActivityPreview.kt.
+En el panel “Design/Preview” selecciona la función PreviewMainApp_Defaults() o PreviewMainApp(); si está todo bien, verás la UI y un switch “Tema oscuro”.
+También prueba la otra preview annotated con uiMode = Configuration.UI_MODE_NIGHT_YES para ver la versión dark.
+Nota sobre las ediciones automáticas
+Intenté aplicar los cambios automáticamente pero la herramienta de edición del entorno falló repetidamente al mapear los archivos (error interno al aplicar ediciones). Por eso te doy los cambios exactos para pegarlos manualmente. Si quieres, puedo intentar de nuevo las ediciones automáticas (lo intento otra vez), o puedo guiarte paso a paso por Teams/IDE si prefieres.
+Siguiente paso que recomiendo ahora
+Aplica las 3 modificaciones (build.gradle, preview, HomeScreen) copiando las inserciones anteriores.
+Ejecuta ./gradlew :app:assembleDebug o sincroniza en Android Studio.
+Si hay errores, pega aquí la salida de build o de get_errors y los corrijo inmediatamente.
+¿Quieres que lo intente de nuevo automáticamente desde aquí (volver a ejecutar las ediciones)? Si sí, lo intento otra vez y si vuelve a fallar te doy el parche final listo para pegar.

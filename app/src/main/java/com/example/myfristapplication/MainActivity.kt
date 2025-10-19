@@ -15,6 +15,7 @@ import com.example.myfristapplication.viewmodel.FoodViewModel
 import com.example.myfristapplication.viewmodel.ExpenseViewModel
 import com.example.myfristapplication.viewmodel.RecordsViewModel
 import com.example.myfristapplication.viewmodel.ExpenseRecordsViewModel
+import com.example.myfristapplication.viewmodel.ThemeViewModel
 
 import com.example.myfristapplication.ui.home.HomeScreen
 import com.example.myfristapplication.ui.food.FoodScreen
@@ -28,22 +29,26 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ViewModels are provided by Hilt
+        // ViewModels are provided by Hilt (ThemeViewModel is AndroidViewModel created by ViewModelProvider)
         val mainViewModel: MainViewModel by viewModels()
         val foodViewModel: FoodViewModel by viewModels()
         val recordsViewModel: RecordsViewModel by viewModels()
         val expenseViewModel: ExpenseViewModel by viewModels()
         val expenseRecordsViewModel: ExpenseRecordsViewModel by viewModels()
+        val themeViewModel: ThemeViewModel by viewModels()
 
         enableEdgeToEdge()
         setContent {
-            MyFristApplicationTheme {
+            val isDark by themeViewModel.isDarkMode.collectAsState()
+            MyFristApplicationTheme(darkTheme = isDark) {
                 MainApp(
                     mainViewModel = mainViewModel,
                     foodViewModel = foodViewModel,
                     expenseViewModel = expenseViewModel,
                     recordsViewModel = recordsViewModel,
-                    expenseRecordsViewModel = expenseRecordsViewModel
+                    expenseRecordsViewModel = expenseRecordsViewModel,
+                    isDarkMode = isDark,
+                    onToggleDarkMode = { enabled -> themeViewModel.setDarkMode(enabled) }
                 )
             }
         }
@@ -56,7 +61,9 @@ fun MainApp(
     foodViewModel: FoodViewModel,
     expenseViewModel: ExpenseViewModel,
     recordsViewModel: RecordsViewModel,
-    expenseRecordsViewModel: ExpenseRecordsViewModel
+    expenseRecordsViewModel: ExpenseRecordsViewModel,
+    isDarkMode: Boolean,
+    onToggleDarkMode: (Boolean) -> Unit
 ) {
     val currentScreen by mainViewModel.currentScreen.collectAsState()
     val message by mainViewModel.message.collectAsState()
@@ -89,7 +96,9 @@ fun MainApp(
             onViewExpensesClick = {
                 expenseRecordsViewModel.requestExpenseRecords()
                 mainViewModel.navigateTo("expenseRecords")
-            }
+            },
+            isDarkMode = isDarkMode,
+            onToggleDarkMode = onToggleDarkMode
         )
 
         "food" -> FoodScreen(
