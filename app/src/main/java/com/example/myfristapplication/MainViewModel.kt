@@ -6,11 +6,14 @@ import com.example.myfristapplication.data.ActionRecord
 import com.example.myfristapplication.data.ActionRecordRepository
 import com.example.myfristapplication.data.DailyExpense
 import com.example.myfristapplication.data.DailyExpenseRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-class MainViewModel(
+@HiltViewModel
+class MainViewModel @Inject constructor(
     private val actionRecordRepository: ActionRecordRepository,
     private val dailyExpenseRepository: DailyExpenseRepository
 ) : ViewModel() {
@@ -66,7 +69,8 @@ class MainViewModel(
 
     fun setDailyExpenseAmountText(text: String) {
         _dailyExpenseAmountText.value = text
-        _isAmountValid.value = text.toDoubleOrNull() != null && text.toDoubleOrNull()!! > 0.0
+        val parsed = text.toDoubleOrNull()
+        _isAmountValid.value = parsed != null && parsed > 0.0
         _showExpenseError.value = false
     }
 
